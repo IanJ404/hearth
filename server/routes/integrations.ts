@@ -1,0 +1,224 @@
+import { Router } from "express";
+import { getDb } from "../db.js";
+import { getIntegration, getAllIntegrations } from "../integrations/index.js";
+import { v4 as uuidv4 } from "uuid";
+import type { Server } from "socket.io";
+
+let io: Server;
+
+export function setIntegrationSocketIo(socketIo: Server) {
+  io = socketIo;
+}
+
+const router = Router();
+
+interface ConfigRow {
+  id: string;
+  config: string;
+  enabled: number;
+  last_sync: string | null;
+  updated_at: string;
+}
+
+function redactConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const redacted = { ...config };
+  if (redacted.token) redacted.token = "***";
+  if (redacted.clientSecret) redacted.clientSecret = "***";
+  return redacted;
+}
+
+router.get("/", (_req, res) => {
+  const db = getDb();
+  const configs = db
+    .prepare("SELECT * FROM integration_config")
+    .all() as ConfigRow[];
+  const integrations = getAllIntegrations();
+
+  const result = integrations.map((integration) => {
+    const configRow = configs.find((c) => c.id === integration.id);
+    const parsed = configRow ? JSON.parse(configRow.config || "{}") : {};
+    return {
+      id: integration.id,
+      name: integration.name,
+      enabled: configRow?.enabled || 0,
+      last_sync: configRow?.last_sync || null,
+      config: redactConfig(parsed),
+    };
+  });
+  res.json(result);
+});
+
+router.post("/:id/configure", (req, res) => {
+  const db = getDb();
+  const integration = getIntegration(req.params.id);
+  if (!integration)
+    return res.status(404).json({ error: "Integration not found" });
+
+  const existing = db
+    .prepare("SELECT * FROM integration_config WHERE id = ?")
+    .get(req.params.id) as ConfigRow;
+  const currentConfig = JSON.parse(existing?.config || "{}");
+
+  const newConfig = { ...currentConfig };
+  for (const [key, value] of Object.entries(req.body)) {
+    if (value !== "***") newConfig[key] = value;
+  }
+
+  db.prepare(
+    `
+    UPDATE integration_config SET config = ?, updated_at = datetime('now') WHERE id = ?
+  `,
+  ).run(JSON.stringify(newConfig), req.params.id);
+
+  integration.configure(newConfig);
+
+  res.json({ ok: true, config: redactConfig(newConfig) });
+});
+
+router.post("/:id/test", async (req, res) => {
+  const db = getDb();
+  const integration = getIntegration(req.params.id);
+  if (!integration)
+    return res.status(404).json({ error: "Integration not found" });
+
+  const configRow = db
+    .prepare("SELECT * FROM integration_config WHERE id = ?")
+    .get(req.params.id) as ConfigRow;
+  const config = JSON.parse(configRow?.config || "{}");
+  integration.configure(config);
+
+  const result = await integration.testConnection();
+  res.json(result);
+});
+
+router.post("/:id/sync", async (req, res) => {
+  const db = getDb();
+  const integration = getIntegration(req.params.id);
+  if (!integration)
+    return res.status(404).json({ error: "Integration not found" });
+
+  const configRow = db
+    .prepare("SELECT * FROM integration_config WHERE id = ?")
+    .get(req.params.id) as ConfigRow;
+  const config = JSON.parse(configRow?.config || "{}");
+  integration.configure(config);
+
+  try {
+    const externalDevices = await integration.syncDevices();
+
+    let synced = 0;
+    for (const ext of externalDevices) {
+      const existing = db
+        .prepare(
+          "SELECT * FROM devices WHERE integration = ? AND external_id = ?",
+        )
+        .get(req.params.id, ext.externalId);
+      if (existing) {
+        db.prepare(
+          "UPDATE devices SET state = ?, name = ?, updated_at = datetime('now') WHERE integration = ? AND external_id = ?",
+        ).run(
+          JSON.stringify(ext.state),
+          ext.name,
+          req.params.id,
+          ext.externalId,
+        );
+      } else {
+        db.prepare(
+          `
+          INSERT INTO devices (id, name, type, state, integration, external_id, icon, enabled)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        `,
+        ).run(
+          uuidv4(),
+          ext.name,
+          ext.type,
+          JSON.stringify(ext.state),
+          req.params.id,
+          ext.externalId,
+          ext.icon || "zap",
+        );
+        synced++;
+      }
+    }
+
+    db.prepare(
+      "UPDATE integration_config SET last_sync = datetime('now') WHERE id = ?",
+    ).run(req.params.id);
+
+    const eventId = uuidv4();
+    db.prepare(
+      "INSERT INTO events (id, type, description, metadata) VALUES (?, ?, ?, ?)",
+    ).run(
+      eventId,
+      "integration_sync",
+      `${integration.name} sync: ${externalDevices.length} devices (${synced} new)`,
+      JSON.stringify({
+        integration: req.params.id,
+        total: externalDevices.length,
+        new: synced,
+      }),
+    );
+
+    if (io) {
+      io.emit("integration:sync", {
+        integrationId: req.params.id,
+        deviceCount: externalDevices.length,
+      });
+      const event = db
+        .prepare("SELECT * FROM events WHERE id = ?")
+        .get(eventId);
+      io.emit("event:new", { event });
+    }
+
+    res.json({ ok: true, total: externalDevices.length, new: synced });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+router.post("/:id/toggle", (req, res) => {
+  const db = getDb();
+  const integration = getIntegration(req.params.id);
+  if (!integration)
+    return res.status(404).json({ error: "Integration not found" });
+
+  const configRow = db
+    .prepare("SELECT * FROM integration_config WHERE id = ?")
+    .get(req.params.id) as ConfigRow;
+  const newEnabled = configRow.enabled ? 0 : 1;
+  db.prepare("UPDATE integration_config SET enabled = ? WHERE id = ?").run(
+    newEnabled,
+    req.params.id,
+  );
+
+  if (newEnabled) {
+    const config = JSON.parse(configRow.config || "{}");
+    integration.configure(config);
+    integration.startRealtime((externalId, state) => {
+      const device = db
+        .prepare(
+          "SELECT * FROM devices WHERE integration = ? AND external_id = ?",
+        )
+        .get(req.params.id, externalId) as
+        | { id: string; state: string }
+        | undefined;
+      if (device) {
+        const current = JSON.parse(device.state || "{}");
+        const next = { ...current, ...state };
+        db.prepare("UPDATE devices SET state = ? WHERE id = ?").run(
+          JSON.stringify(next),
+          device.id,
+        );
+        if (io) io.emit("device:update", { deviceId: device.id, state: next });
+      }
+    });
+  } else {
+    integration.stopRealtime();
+  }
+
+  res.json({ ok: true, enabled: newEnabled });
+});
+
+export default router;
