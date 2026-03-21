@@ -34,8 +34,6 @@ export class GoogleHomeIntegration implements Integration {
       scope: SCOPE,
       access_type: "offline",
       prompt: "consent",
-      // encode redirectUri in state so callback knows where to send user back
-      state: Buffer.from(redirectUri).toString("base64"),
     });
     return `${AUTH_URL}?${params}`;
   }

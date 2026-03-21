@@ -207,7 +207,10 @@ export default function IntegrationsView() {
   async function connectGoogle(intgId: string) {
     // Save credentials first so the server can use them during the OAuth flow
     await save(intgId);
-    const redirectUri = `${window.location.protocol}//${window.location.hostname}:3010/api/integrations/google/callback`;
+    // Google OAuth requires a real domain or localhost — raw IPs are rejected.
+    // Always use localhost here; the OAuth flow must be initiated from the
+    // same machine running the HEARTH server. Use a Desktop app credential type.
+    const redirectUri = `http://localhost:3010/api/integrations/google/callback`;
     try {
       const { url } = await api.integrations.googleAuthUrl(redirectUri);
       window.location.href = url;

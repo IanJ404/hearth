@@ -254,19 +254,14 @@ router.get("/google/auth-url", (req, res) => {
 // Google redirects here after the user grants consent
 router.get("/google/callback", async (req, res) => {
   const db = getDb();
-  const { code, state, error } = req.query as Record<string, string>;
+  const { code, error } = req.query as Record<string, string>;
 
-  // Decode the frontend origin from state so we can redirect back
-  let frontendOrigin = "";
-  try {
-    const redirectUri = Buffer.from(state ?? "", "base64").toString("utf8");
-    // redirectUri is like http://192.168.1.x:3010/api/integrations/google/callback
-    // derive frontend origin by swapping port 3010→3011 (dev) or keeping it in prod
-    const u = new URL(redirectUri);
-    frontendOrigin = `${u.protocol}//${u.hostname}:${u.port === "3010" ? "3011" : u.port}`;
-  } catch {
-    frontendOrigin = "http://localhost:3011";
-  }
+  // Redirect back to the frontend after auth.
+  // In dev the frontend is on 3011; in production the server serves the built app on 3010.
+  const isDev = process.env.NODE_ENV !== "production";
+  const frontendOrigin = isDev
+    ? "http://localhost:3011"
+    : "http://localhost:3010";
 
   if (error) {
     return res.redirect(
@@ -294,7 +289,8 @@ router.get("/google/callback", async (req, res) => {
   }
 
   try {
-    const redirectUri = Buffer.from(state ?? "", "base64").toString("utf8");
+    const redirectUri =
+      "http://localhost:3010/api/integrations/google/callback";
     const configRow = db
       .prepare("SELECT config FROM integration_config WHERE id = 'google'")
       .get() as { config: string } | undefined;
