@@ -5,6 +5,7 @@ import {
   RefreshCw,
   Save,
   AlertTriangle,
+  LogIn,
 } from "lucide-react";
 import { api } from "../api";
 import type { IntegrationConfig } from "../types";
@@ -16,6 +17,7 @@ const INTEGRATION_META: Record<
     fields: { key: string; label: string; type: string; placeholder: string }[];
     stub?: boolean;
     stubNote?: string;
+    oauth?: boolean;
   }
 > = {
   homeassistant: {
@@ -75,30 +77,29 @@ const INTEGRATION_META: Record<
     ],
   },
   google: {
-    description: "Google Home integration.",
-    stub: true,
-    stubNote:
-      "Google Home integration requires a Google Cloud project and OAuth2 flow. Use Home Assistant with the Google Home integration instead.",
+    description:
+      "Connect Nest devices (thermostat, camera, doorbell) via the Google Smart Device Management API.",
     fields: [
       {
         key: "projectId",
-        label: "Project ID",
+        label: "Device Access Project ID",
         type: "text",
-        placeholder: "your-gcp-project-id",
+        placeholder: "From console.nest.google.com/device-access",
       },
       {
         key: "clientId",
-        label: "Client ID",
+        label: "OAuth Client ID",
         type: "text",
-        placeholder: "OAuth2 client ID",
+        placeholder: "From Google Cloud Console",
       },
       {
         key: "clientSecret",
-        label: "Client Secret",
+        label: "OAuth Client Secret",
         type: "password",
-        placeholder: "OAuth2 client secret",
+        placeholder: "From Google Cloud Console",
       },
     ],
+    oauth: true,
   },
 };
 
@@ -121,6 +122,21 @@ export default function IntegrationsView() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [testState, setTestState] = useState<Record<string, TestState>>({});
   const [syncState, setSyncState] = useState<Record<string, SyncState>>({});
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  // Handle Google OAuth redirect-back query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google_connected")) {
+      setGoogleConnected(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("google_error")) {
+      setGoogleError(decodeURIComponent(params.get("google_error") ?? ""));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     const data = await api.integrations.list();
@@ -137,6 +153,9 @@ export default function IntegrationsView() {
       }
     }
     setFormData(initial);
+    // Check if Google already has a refresh token (previously authorised)
+    const googleIntg = data.find((d) => d.id === "google");
+    if (googleIntg?.config?.refreshToken) setGoogleConnected(true);
   }, []);
 
   useEffect(() => {
@@ -183,6 +202,18 @@ export default function IntegrationsView() {
   async function toggle(intgId: string) {
     await api.integrations.toggle(intgId);
     load();
+  }
+
+  async function connectGoogle(intgId: string) {
+    // Save credentials first so the server can use them during the OAuth flow
+    await save(intgId);
+    const redirectUri = `${window.location.protocol}//${window.location.hostname}:3010/api/integrations/google/callback`;
+    try {
+      const { url } = await api.integrations.googleAuthUrl(redirectUri);
+      window.location.href = url;
+    } catch (e) {
+      setGoogleError((e as Error).message);
+    }
   }
 
   return (
@@ -284,6 +315,55 @@ export default function IntegrationsView() {
                 </div>
               )}
 
+              {intg.id === "google" && !meta.stub && (
+                <div style={{ marginBottom: 16 }}>
+                  {googleConnected ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 13,
+                        color: "var(--green)",
+                        background: "rgba(34,197,94,0.08)",
+                        border: "1px solid rgba(34,197,94,0.25)",
+                        borderRadius: 6,
+                        padding: "6px 12px",
+                      }}
+                    >
+                      <CheckCircle size={13} />
+                      Authorised with Google
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-muted)",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Enter your credentials below, save, then connect your
+                      Google account.
+                    </div>
+                  )}
+                  {googleError && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 12,
+                        color: "var(--red)",
+                      }}
+                    >
+                      <XCircle size={13} />
+                      {googleError}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="divider" style={{ margin: "0 0 16px" }} />
 
               <div className="grid-2" style={{ marginBottom: 16 }}>
@@ -350,6 +430,23 @@ export default function IntegrationsView() {
                   )}
                   {sState?.loading ? "Syncing…" : "Sync Devices"}
                 </button>
+
+                {meta.oauth && intg.id === "google" && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => connectGoogle(intg.id)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <LogIn size={13} />
+                    {googleConnected
+                      ? "Re-authorise Google"
+                      : "Connect with Google"}
+                  </button>
+                )}
 
                 {tState?.result && (
                   <span

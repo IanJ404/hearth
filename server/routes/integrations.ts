@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getDb } from "../db.js";
 import { getIntegration, getAllIntegrations } from "../integrations/index.js";
+import type { GoogleHomeIntegration } from "../integrations/google.js";
 import { v4 as uuidv4 } from "uuid";
 import type { Server } from "socket.io";
 
@@ -219,6 +220,106 @@ router.post("/:id/toggle", (req, res) => {
   }
 
   res.json({ ok: true, enabled: newEnabled });
+});
+
+// ── Google OAuth ──────────────────────────────────────────────────────────────
+
+// Returns the Google authorization URL so the frontend can redirect the user
+router.get("/google/auth-url", (req, res) => {
+  const db = getDb();
+  const integration = getIntegration("google") as
+    | (GoogleHomeIntegration & { getAuthUrl: (r: string) => string })
+    | undefined;
+  if (!integration)
+    return res.status(404).json({ error: "Google integration not found" });
+
+  const configRow = db
+    .prepare("SELECT config FROM integration_config WHERE id = 'google'")
+    .get() as { config: string } | undefined;
+  const config = JSON.parse(configRow?.config || "{}");
+  integration.configure(config);
+
+  const redirectUri = String(req.query.redirect_uri ?? "");
+  if (!redirectUri)
+    return res.status(400).json({ error: "redirect_uri required" });
+
+  try {
+    const url = integration.getAuthUrl(redirectUri);
+    res.json({ url });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Google redirects here after the user grants consent
+router.get("/google/callback", async (req, res) => {
+  const db = getDb();
+  const { code, state, error } = req.query as Record<string, string>;
+
+  // Decode the frontend origin from state so we can redirect back
+  let frontendOrigin = "";
+  try {
+    const redirectUri = Buffer.from(state ?? "", "base64").toString("utf8");
+    // redirectUri is like http://192.168.1.x:3010/api/integrations/google/callback
+    // derive frontend origin by swapping port 3010→3011 (dev) or keeping it in prod
+    const u = new URL(redirectUri);
+    frontendOrigin = `${u.protocol}//${u.hostname}:${u.port === "3010" ? "3011" : u.port}`;
+  } catch {
+    frontendOrigin = "http://localhost:3011";
+  }
+
+  if (error) {
+    return res.redirect(
+      `${frontendOrigin}?google_error=${encodeURIComponent(error)}`,
+    );
+  }
+  if (!code) {
+    return res.redirect(`${frontendOrigin}?google_error=no_code`);
+  }
+
+  const integration = getIntegration("google") as
+    | (GoogleHomeIntegration & {
+        exchangeCode: (
+          code: string,
+          redirectUri: string,
+        ) => Promise<{
+          accessToken: string;
+          refreshToken: string;
+          expiry: number;
+        }>;
+      })
+    | undefined;
+  if (!integration) {
+    return res.redirect(`${frontendOrigin}?google_error=integration_missing`);
+  }
+
+  try {
+    const redirectUri = Buffer.from(state ?? "", "base64").toString("utf8");
+    const configRow = db
+      .prepare("SELECT config FROM integration_config WHERE id = 'google'")
+      .get() as { config: string } | undefined;
+    const config = JSON.parse(configRow?.config || "{}");
+    integration.configure(config);
+
+    const tokens = await integration.exchangeCode(code, redirectUri);
+
+    // Persist tokens into the integration config
+    const updated = {
+      ...config,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      tokenExpiry: tokens.expiry,
+    };
+    db.prepare(
+      "UPDATE integration_config SET config = ?, updated_at = datetime('now') WHERE id = 'google'",
+    ).run(JSON.stringify(updated));
+    integration.configure(updated);
+
+    res.redirect(`${frontendOrigin}?google_connected=1`);
+  } catch (err: unknown) {
+    const msg = encodeURIComponent((err as Error).message);
+    res.redirect(`${frontendOrigin}?google_error=${msg}`);
+  }
 });
 
 export default router;

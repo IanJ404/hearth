@@ -102,6 +102,10 @@ export const api = {
       request<{ ok: boolean; enabled: number }>(`/integrations/${id}/toggle`, {
         method: "POST",
       }),
+    googleAuthUrl: (redirectUri: string) =>
+      request<{ url: string }>(
+        `/integrations/google/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}`,
+      ),
   },
 
   ai: {
