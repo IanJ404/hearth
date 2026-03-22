@@ -6,6 +6,7 @@ import {
   Plug,
   BotMessageSquare,
   Flame,
+  Wifi,
 } from "lucide-react";
 import type { View } from "../App";
 
@@ -20,6 +21,7 @@ const NAV_ITEMS: { id: View; label: string; icon: React.ReactNode }[] = [
   { id: "schedules", label: "Schedules", icon: <CalendarClock size={18} /> },
   { id: "events", label: "Events", icon: <Activity size={18} /> },
   { id: "integrations", label: "Integrations", icon: <Plug size={18} /> },
+  { id: "discovery", label: "LAN Discovery", icon: <Wifi size={18} /> },
   { id: "ai", label: "AI Assistant", icon: <BotMessageSquare size={18} /> },
 ];
 

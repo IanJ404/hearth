@@ -4,6 +4,7 @@ import type {
   Schedule,
   HEvent,
   IntegrationConfig,
+  DiscoveredDevice,
   ChatMessage,
 } from "./types";
 
@@ -105,6 +106,15 @@ export const api = {
     googleAuthUrl: (redirectUri: string) =>
       request<{ url: string }>(
         `/integrations/google/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}`,
+      ),
+  },
+
+  discovery: {
+    list: () => request<DiscoveredDevice[]>("/discovery"),
+    scan: () =>
+      request<{ ok: boolean; scanning: boolean; message: string }>(
+        "/discovery/scan",
+        { method: "POST" },
       ),
   },
 

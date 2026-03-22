@@ -14,6 +14,8 @@ import integrationsRouter, {
   setIntegrationSocketIo,
 } from "./routes/integrations.js";
 import aiRouter from "./routes/ai.js";
+import discoveryRouter from "./routes/discovery.js";
+import { setDiscoverySocketIo } from "./discovery.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -33,6 +35,7 @@ app.use("/api/schedules", schedulesRouter);
 app.use("/api/events", eventsRouter);
 app.use("/api/integrations", integrationsRouter);
 app.use("/api/ai", aiRouter);
+app.use("/api/discovery", discoveryRouter);
 
 app.get("/api/health", (_req, res) => {
   const db = getDb();
@@ -54,6 +57,7 @@ io.on("connection", (socket) => {
 
 setDeviceSocketIo(io);
 setIntegrationSocketIo(io);
+setDiscoverySocketIo(io);
 
 getDb();
 initIntegrations();

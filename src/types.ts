@@ -74,6 +74,19 @@ export interface IntegrationConfig {
   config: Record<string, unknown>;
 }
 
+export interface DiscoveredDevice {
+  id: string;
+  name: string;
+  type: string;
+  protocol: "mdns" | "ssdp";
+  host: string;
+  port?: number;
+  addresses?: string[];
+  serviceType?: string;
+  udn?: string;
+  seen: number;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

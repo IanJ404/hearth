@@ -6,6 +6,7 @@ import SchedulesView from "./components/SchedulesView";
 import EventsView from "./components/EventsView";
 import IntegrationsView from "./components/IntegrationsView";
 import AIAssistant from "./components/AIAssistant";
+import DiscoveryView from "./components/DiscoveryView";
 import { getSocket } from "./socket";
 import type { Device } from "./types";
 
@@ -15,6 +16,7 @@ export type View =
   | "schedules"
   | "events"
   | "integrations"
+  | "discovery"
   | "ai";
 
 export default function App() {
@@ -59,6 +61,7 @@ export default function App() {
         {view === "schedules" && <SchedulesView />}
         {view === "events" && <EventsView />}
         {view === "integrations" && <IntegrationsView />}
+        {view === "discovery" && <DiscoveryView />}
         {view === "ai" && <AIAssistant />}
       </div>
     </div>
