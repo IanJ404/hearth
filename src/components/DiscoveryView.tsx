@@ -110,7 +110,7 @@ export default function DiscoveryView() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [modal, setModal] = useState<AddModal | null>(null);
   const [saving, setSaving] = useState(false);
-  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [addedCount, setAddedCount] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     const [devs, roomList] = await Promise.all([
@@ -185,7 +185,10 @@ export default function DiscoveryView() {
         icon: DEVICE_TYPE_ICON[modal.type] ?? "zap",
         state: {},
       });
-      setAdded((prev) => new Set(prev).add(modal.device.id));
+      setAddedCount((prev) => ({
+        ...prev,
+        [modal.device.id]: (prev[modal.device.id] ?? 0) + 1,
+      }));
       setModal(null);
     } finally {
       setSaving(false);
@@ -282,7 +285,7 @@ export default function DiscoveryView() {
           }}
         >
           {devices.map((device) => {
-            const isAdded = added.has(device.id);
+            const count = addedCount[device.id] ?? 0;
             return (
               <div
                 key={device.id}
@@ -325,33 +328,35 @@ export default function DiscoveryView() {
                       </div>
                     </div>
                   </div>
-                  {isAdded ? (
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 12,
-                        color: "var(--green)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <CheckCircle size={13} /> Added
-                    </span>
-                  ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {count > 0 && (
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 11,
+                          color: "var(--green)",
+                        }}
+                      >
+                        <CheckCircle size={12} /> {count} added
+                      </span>
+                    )}
                     <button
                       className="btn btn-secondary btn-sm"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        flexShrink: 0,
-                      }}
+                      style={{ display: "flex", alignItems: "center", gap: 4 }}
                       onClick={() => openModal(device)}
                     >
                       <Plus size={13} /> Add
                     </button>
-                  )}
+                  </div>
                 </div>
                 <div
                   style={{
