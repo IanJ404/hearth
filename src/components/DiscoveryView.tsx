@@ -83,9 +83,8 @@ export default function DiscoveryView() {
   async function startScan() {
     setScanning(true);
     setScanProgress(0);
-    await api.discovery.scan();
 
-    // Animate progress over 10 seconds
+    // Start progress animation immediately, before the API round-trip
     const start = Date.now();
     const duration = 10_000;
     const tick = setInterval(() => {
@@ -96,6 +95,13 @@ export default function DiscoveryView() {
         setScanning(false);
       }
     }, 200);
+
+    try {
+      await api.discovery.scan();
+    } catch {
+      clearInterval(tick);
+      setScanning(false);
+    }
   }
 
   return (

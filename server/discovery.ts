@@ -1,6 +1,5 @@
-import BonjourLib from "bonjour-service";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Bonjour: any = (BonjourLib as any).default ?? BonjourLib;
+const { Bonjour } = require("bonjour-service") as any;
 import { Client as SsdpClient } from "node-ssdp";
 import type { Server } from "socket.io";
 
