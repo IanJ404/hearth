@@ -1,6 +1,9 @@
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { Bonjour } = require("bonjour-service") as any;
-import { Client as SsdpClient } from "node-ssdp";
+const { Bonjour } = _require("bonjour-service") as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { Client: SsdpClient } = _require("node-ssdp") as any;
 import type { Server } from "socket.io";
 
 export interface DiscoveredDevice {
@@ -115,31 +118,38 @@ export function runScan(durationMs = 10_000): Promise<DiscoveredDevice[]> {
     });
 
     // SSDP/UPnP scanning
-    ssdp.on("response", (headers, _statusCode, rinfo) => {
-      const udn =
-        (headers as Record<string, string>)["USN"] ||
-        (headers as Record<string, string>)["usn"] ||
-        rinfo.address;
-      const id = `ssdp:${udn}`;
-      if (scanResults.has(id)) return;
-      const server = (headers as Record<string, string>)["SERVER"] || "";
-      const name =
-        server
-          .split(" ")
-          .find((p) => !p.startsWith("UPnP") && !p.match(/^\d/)) ||
-        rinfo.address;
-      const device: DiscoveredDevice = {
-        id,
-        name,
-        type: guessType(server, name),
-        protocol: "ssdp",
-        host: rinfo.address,
-        serviceType: (headers as Record<string, string>)["ST"] || "upnp",
-        udn,
-        seen: Date.now(),
-      };
-      addDevice(device);
-    });
+    ssdp.on(
+      "response",
+      (
+        headers: Record<string, string>,
+        _statusCode: number,
+        rinfo: { address: string },
+      ) => {
+        const udn =
+          (headers as Record<string, string>)["USN"] ||
+          (headers as Record<string, string>)["usn"] ||
+          rinfo.address;
+        const id = `ssdp:${udn}`;
+        if (scanResults.has(id)) return;
+        const server = (headers as Record<string, string>)["SERVER"] || "";
+        const name =
+          server
+            .split(" ")
+            .find((p) => !p.startsWith("UPnP") && !p.match(/^\d/)) ||
+          rinfo.address;
+        const device: DiscoveredDevice = {
+          id,
+          name,
+          type: guessType(server, name),
+          protocol: "ssdp",
+          host: rinfo.address,
+          serviceType: (headers as Record<string, string>)["ST"] || "upnp",
+          udn,
+          seen: Date.now(),
+        };
+        addDevice(device);
+      },
+    );
 
     for (const target of SSDP_TARGETS) {
       try {
