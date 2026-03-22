@@ -63,6 +63,7 @@ export default function RoomsView({ mergeDeviceState }: Props) {
   // Delete confirms
   const [deleteRoom, setDeleteRoom] = useState<Room | null>(null);
   const [deleteDevice, setDeleteDevice] = useState<Device | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [r, d] = await Promise.all([api.rooms.list(), api.devices.list()]);
@@ -95,13 +96,17 @@ export default function RoomsView({ mergeDeviceState }: Props) {
 
   async function saveRoom() {
     if (!roomForm.name.trim()) return;
-    if (roomModal?.mode === "create") {
-      await api.rooms.create(roomForm);
-    } else if (roomModal?.room) {
-      await api.rooms.update(roomModal.room.id, roomForm);
+    try {
+      if (roomModal?.mode === "create") {
+        await api.rooms.create(roomForm);
+      } else if (roomModal?.room) {
+        await api.rooms.update(roomModal.room.id, roomForm);
+      }
+      setRoomModal(null);
+      load();
+    } catch (e) {
+      setError((e as Error).message);
     }
-    setRoomModal(null);
-    load();
   }
 
   async function confirmDeleteRoom() {
@@ -123,13 +128,17 @@ export default function RoomsView({ mergeDeviceState }: Props) {
 
   async function saveDevice() {
     if (!deviceModal || !deviceForm.name.trim()) return;
-    await api.devices.update(deviceModal.id, {
-      name: deviceForm.name,
-      type: deviceForm.type,
-      room_id: deviceForm.roomId || null,
-    });
-    setDeviceModal(null);
-    load();
+    try {
+      await api.devices.update(deviceModal.id, {
+        name: deviceForm.name,
+        type: deviceForm.type,
+        room_id: deviceForm.roomId || null,
+      });
+      setDeviceModal(null);
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   async function confirmDeleteDevice() {
@@ -152,6 +161,37 @@ export default function RoomsView({ mergeDeviceState }: Props) {
           <Plus size={15} /> Add Room
         </button>
       </div>
+
+      {error && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 14px",
+            background: "rgba(239,68,68,0.1)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            borderRadius: 8,
+            fontSize: 13,
+            color: "var(--red)",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          {error}
+          <button
+            onClick={() => setError(null)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--red)",
+              fontSize: 16,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {rooms.map((room) => (
