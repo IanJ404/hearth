@@ -9,6 +9,8 @@ import {
   DoorOpen,
   Droplets,
   Lamp,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { api } from "../api";
 import type { Device } from "../types";
@@ -16,6 +18,8 @@ import type { Device } from "../types";
 interface Props {
   device: Device;
   onStateChange: (device: Device) => void;
+  onEdit: (device: Device) => void;
+  onDelete: (device: Device) => void;
 }
 
 function DeviceIcon({ type, icon }: { type: string; icon: string | null }) {
@@ -47,7 +51,12 @@ function integrationColor(integration: string): string {
   return colors[integration] || "var(--text-dim)";
 }
 
-export default function DeviceCard({ device, onStateChange }: Props) {
+export default function DeviceCard({
+  device,
+  onStateChange,
+  onEdit,
+  onDelete,
+}: Props) {
   const state = device.state;
 
   async function toggle() {
@@ -146,26 +155,59 @@ export default function DeviceCard({ device, onStateChange }: Props) {
           </div>
         </div>
 
-        {(device.type === "light" ||
-          device.type === "switch" ||
-          device.type === "fan" ||
-          device.type === "camera") && (
-          <label className="toggle">
-            <input type="checkbox" checked={!!isOn} onChange={toggle} />
-            <span className="toggle-slider" />
-          </label>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {(device.type === "light" ||
+            device.type === "switch" ||
+            device.type === "fan" ||
+            device.type === "camera") && (
+            <label className="toggle">
+              <input type="checkbox" checked={!!isOn} onChange={toggle} />
+              <span className="toggle-slider" />
+            </label>
+          )}
 
-        {device.type === "lock" && (
+          {device.type === "lock" && (
+            <button
+              className={`btn btn-sm ${state.locked ? "btn-secondary" : "btn-danger"}`}
+              onClick={() => setLock(!state.locked as boolean)}
+              style={{ padding: "4px 10px", fontSize: 11 }}
+            >
+              <Lock size={11} />
+              {state.locked ? "Locked" : "Unlocked"}
+            </button>
+          )}
+
           <button
-            className={`btn btn-sm ${state.locked ? "btn-secondary" : "btn-danger"}`}
-            onClick={() => setLock(!state.locked as boolean)}
-            style={{ padding: "4px 10px", fontSize: 11 }}
+            onClick={() => onEdit(device)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-dim)",
+              padding: 3,
+              display: "flex",
+              alignItems: "center",
+            }}
+            title="Edit"
           >
-            <Lock size={11} />
-            {state.locked ? "Locked" : "Unlocked"}
+            <Pencil size={12} />
           </button>
-        )}
+          <button
+            onClick={() => onDelete(device)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-dim)",
+              padding: 3,
+              display: "flex",
+              alignItems: "center",
+            }}
+            title="Delete"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
       </div>
 
       {device.type === "light" &&

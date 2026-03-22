@@ -8,6 +8,8 @@ import {
   Lightbulb,
   Thermometer,
   Shield,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import DeviceCard from "./DeviceCard";
 import type { Room, Device } from "../types";
@@ -16,6 +18,10 @@ interface Props {
   room: Room;
   devices: Device[];
   onDeviceStateChange: (device: Device) => void;
+  onEditDevice: (device: Device) => void;
+  onDeleteDevice: (device: Device) => void;
+  onEditRoom: (room: Room) => void;
+  onDeleteRoom: (room: Room) => void;
 }
 
 function RoomIcon({ icon, color }: { icon: string; color: string }) {
@@ -53,6 +59,10 @@ export default function RoomCard({
   room,
   devices,
   onDeviceStateChange,
+  onEditDevice,
+  onDeleteDevice,
+  onEditRoom,
+  onDeleteRoom,
 }: Props) {
   const [expanded, setExpanded] = useState(true);
   const onCount = devices.filter((d) => d.state.on).length;
@@ -82,7 +92,7 @@ export default function RoomCard({
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {devices.slice(0, 4).map((d) => (
             <span
               key={d.id}
@@ -90,6 +100,42 @@ export default function RoomCard({
               title={d.name}
             />
           ))}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditRoom(room);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-dim)",
+              padding: 4,
+              display: "flex",
+              alignItems: "center",
+            }}
+            title="Edit room"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteRoom(room);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-dim)",
+              padding: 4,
+              display: "flex",
+              alignItems: "center",
+            }}
+            title="Delete room"
+          >
+            <Trash2 size={13} />
+          </button>
           <span
             style={{
               color: "var(--text-dim)",
@@ -131,6 +177,8 @@ export default function RoomCard({
                 key={device.id}
                 device={device}
                 onStateChange={onDeviceStateChange}
+                onEdit={onEditDevice}
+                onDelete={onDeleteDevice}
               />
             ))
           )}

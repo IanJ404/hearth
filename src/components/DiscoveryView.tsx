@@ -74,17 +74,6 @@ const DISCOVERY_TO_DEVICE_TYPE: Record<string, DeviceType> = {
   smarthome: "switch",
 };
 
-const DEVICE_TYPE_OPTIONS: DeviceType[] = [
-  "light",
-  "switch",
-  "thermostat",
-  "sensor",
-  "lock",
-  "camera",
-  "fan",
-  "cover",
-];
-
 const DEVICE_TYPE_ICON: Record<DeviceType, string> = {
   light: "lightbulb",
   switch: "zap",
@@ -460,41 +449,86 @@ export default function DiscoveryView() {
               />
             </div>
 
-            <div className="grid-2" style={{ marginBottom: 16 }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Type</label>
-                <select
-                  className="form-input"
-                  value={modal.type}
-                  onChange={(e) =>
-                    setModal({ ...modal, type: e.target.value as DeviceType })
-                  }
+            {/* Detected attributes */}
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "10px 12px",
+                background: "var(--surface)",
+                borderRadius: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  marginBottom: 4,
+                }}
+              >
+                <span
+                  style={{
+                    background: "var(--accent-dim)",
+                    color: "var(--accent)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: 11,
+                  }}
                 >
-                  {DEVICE_TYPE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                  {TYPE_LABELS[modal.device.type] ?? modal.device.type}
+                </span>
+                <span
+                  style={{
+                    background: "var(--surface-raised)",
+                    color: "var(--text-muted)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: 11,
+                  }}
+                >
+                  {modal.device.protocol.toUpperCase()}
+                </span>
+                {modal.device.serviceType && (
+                  <span
+                    style={{
+                      background: "var(--surface-raised)",
+                      color: "var(--text-muted)",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      fontSize: 11,
+                    }}
+                  >
+                    {modal.device.serviceType}
+                  </span>
+                )}
               </div>
+              {modal.device.addresses && modal.device.addresses.length > 0 && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    marginTop: 4,
+                  }}
+                >
+                  IP: {modal.device.addresses.slice(0, 2).join(", ")}
+                </div>
+              )}
+            </div>
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Room</label>
-                <select
-                  className="form-input"
-                  value={modal.roomId}
-                  onChange={(e) =>
-                    setModal({ ...modal, roomId: e.target.value })
-                  }
-                >
-                  <option value="">No room</option>
-                  {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label className="form-label">Room</label>
+              <select
+                className="form-input"
+                value={modal.roomId}
+                onChange={(e) => setModal({ ...modal, roomId: e.target.value })}
+              >
+                <option value="">No room</option>
+                {rooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div
