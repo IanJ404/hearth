@@ -10,9 +10,11 @@ import {
   Lightbulb,
   Lock,
   Radio,
+  X,
+  CheckCircle,
 } from "lucide-react";
 import { api } from "../api";
-import type { DiscoveredDevice } from "../types";
+import type { DiscoveredDevice, Room, DeviceType } from "../types";
 import { getSocket } from "../socket";
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -51,14 +53,72 @@ const TYPE_LABELS: Record<string, string> = {
   smarthome: "Smart Home",
 };
 
+// Map discovery type to the closest HEARTH DeviceType
+const DISCOVERY_TO_DEVICE_TYPE: Record<string, DeviceType> = {
+  homekit: "switch",
+  cast: "switch",
+  hue: "light",
+  lifx: "light",
+  sonos: "switch",
+  homeassistant: "switch",
+  homey: "switch",
+  matter: "switch",
+  thermostat: "thermostat",
+  camera: "camera",
+  light: "light",
+  plug: "switch",
+  lock: "lock",
+  sensor: "sensor",
+  device: "switch",
+  http: "switch",
+  smarthome: "switch",
+};
+
+const DEVICE_TYPE_OPTIONS: DeviceType[] = [
+  "light",
+  "switch",
+  "thermostat",
+  "sensor",
+  "lock",
+  "camera",
+  "fan",
+  "cover",
+];
+
+const DEVICE_TYPE_ICON: Record<DeviceType, string> = {
+  light: "lightbulb",
+  switch: "zap",
+  thermostat: "thermometer",
+  sensor: "activity",
+  lock: "lock",
+  camera: "camera",
+  fan: "wind",
+  cover: "layout",
+};
+
+interface AddModal {
+  device: DiscoveredDevice;
+  name: string;
+  type: DeviceType;
+  roomId: string;
+}
+
 export default function DiscoveryView() {
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [modal, setModal] = useState<AddModal | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [added, setAdded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    const data = await api.discovery.list();
-    setDevices(data);
+    const [devs, roomList] = await Promise.all([
+      api.discovery.list(),
+      api.rooms.list(),
+    ]);
+    setDevices(devs);
+    setRooms(roomList);
   }, []);
 
   useEffect(() => {
@@ -83,8 +143,6 @@ export default function DiscoveryView() {
   async function startScan() {
     setScanning(true);
     setScanProgress(0);
-
-    // Start progress animation immediately, before the API round-trip
     const start = Date.now();
     const duration = 10_000;
     const tick = setInterval(() => {
@@ -95,12 +153,42 @@ export default function DiscoveryView() {
         setScanning(false);
       }
     }, 200);
-
     try {
       await api.discovery.scan();
     } catch {
       clearInterval(tick);
       setScanning(false);
+    }
+  }
+
+  function openModal(device: DiscoveredDevice) {
+    setModal({
+      device,
+      name: device.name,
+      type: DISCOVERY_TO_DEVICE_TYPE[device.type] ?? "switch",
+      roomId: rooms[0]?.id ?? "",
+    });
+  }
+
+  async function confirmAdd() {
+    if (!modal) return;
+    setSaving(true);
+    try {
+      await api.devices.create({
+        name: modal.name,
+        type: modal.type,
+        room_id: modal.roomId || null,
+        integration: "manual",
+        external_id:
+          modal.device.host +
+          (modal.device.port ? `:${modal.device.port}` : ""),
+        icon: DEVICE_TYPE_ICON[modal.type] ?? "zap",
+        state: {},
+      });
+      setAdded((prev) => new Set(prev).add(modal.device.id));
+      setModal(null);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -193,102 +281,235 @@ export default function DiscoveryView() {
             gap: 12,
           }}
         >
-          {devices.map((device) => (
-            <div
-              key={device.id}
-              className="card"
-              style={{ padding: "14px 16px" }}
-            >
+          {devices.map((device) => {
+            const isAdded = added.has(device.id);
+            return (
               <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 8,
-                }}
+                key={device.id}
+                className="card"
+                style={{ padding: "14px 16px" }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: "var(--surface-raised)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "var(--accent)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {TYPE_ICONS[device.type] ?? <Cpu size={16} />}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>
-                      {device.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {TYPE_LABELS[device.type] ?? device.type} &middot;{" "}
-                      {device.protocol.toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  className="btn btn-secondary btn-sm"
+                <div
                   style={{
                     display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
-                  }}
-                  title="Add to HEARTH"
-                  onClick={() => {
-                    // TODO: open add-device modal pre-filled with discovery data
-                    alert(`Add "${device.name}" — coming soon`);
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 8,
                   }}
                 >
-                  <Plus size={13} />
-                  Add
-                </button>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: "var(--surface-raised)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--accent)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {TYPE_ICONS[device.type] ?? <Cpu size={16} />}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>
+                        {device.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {TYPE_LABELS[device.type] ?? device.type} &middot;{" "}
+                        {device.protocol.toUpperCase()}
+                      </div>
+                    </div>
+                  </div>
+                  {isAdded ? (
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        color: "var(--green)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CheckCircle size={13} /> Added
+                    </span>
+                  ) : (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        flexShrink: 0,
+                      }}
+                      onClick={() => openModal(device)}
+                    >
+                      <Plus size={13} /> Add
+                    </button>
+                  )}
+                </div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 10,
+                    borderTop: "1px solid var(--border)",
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
+                >
+                  <span>
+                    Host:{" "}
+                    <span style={{ color: "var(--text-muted)" }}>
+                      {device.host}
+                      {device.port ? `:${device.port}` : ""}
+                    </span>
+                  </span>
+                  {device.addresses && device.addresses.length > 0 && (
+                    <span>
+                      IP:{" "}
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {device.addresses.slice(0, 2).join(", ")}
+                      </span>
+                    </span>
+                  )}
+                  {device.serviceType && (
+                    <span>
+                      Service:{" "}
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {device.serviceType}
+                      </span>
+                    </span>
+                  )}
+                </div>
               </div>
-              <div
-                style={{
-                  marginTop: 10,
-                  paddingTop: 10,
-                  borderTop: "1px solid var(--border)",
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
-                }}
-              >
-                <span>
-                  Host:{" "}
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {device.host}
-                    {device.port ? `:${device.port}` : ""}
-                  </span>
-                </span>
-                {device.addresses && device.addresses.length > 0 && (
-                  <span>
-                    IP:{" "}
-                    <span style={{ color: "var(--text-muted)" }}>
-                      {device.addresses.slice(0, 2).join(", ")}
-                    </span>
-                  </span>
-                )}
-                {device.serviceType && (
-                  <span>
-                    Service:{" "}
-                    <span style={{ color: "var(--text-muted)" }}>
-                      {device.serviceType}
-                    </span>
-                  </span>
-                )}
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add Device Modal */}
+      {modal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setModal(null);
+          }}
+        >
+          <div
+            className="card"
+            style={{ width: 420, padding: 24, position: "relative" }}
+          >
+            <button
+              onClick={() => setModal(null)}
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                padding: 4,
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+              Add to HEARTH
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--text-muted)",
+                marginBottom: 20,
+              }}
+            >
+              {modal.device.host}
+              {modal.device.port ? `:${modal.device.port}` : ""}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Device Name</label>
+              <input
+                className="form-input"
+                value={modal.name}
+                onChange={(e) => setModal({ ...modal, name: e.target.value })}
+                autoFocus
+              />
+            </div>
+
+            <div className="grid-2" style={{ marginBottom: 16 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Type</label>
+                <select
+                  className="form-input"
+                  value={modal.type}
+                  onChange={(e) =>
+                    setModal({ ...modal, type: e.target.value as DeviceType })
+                  }
+                >
+                  {DEVICE_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Room</label>
+                <select
+                  className="form-input"
+                  value={modal.roomId}
+                  onChange={(e) =>
+                    setModal({ ...modal, roomId: e.target.value })
+                  }
+                >
+                  <option value="">No room</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          ))}
+
+            <div
+              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            >
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={confirmAdd}
+                disabled={saving || !modal.name.trim()}
+              >
+                {saving ? "Adding…" : "Add Device"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
